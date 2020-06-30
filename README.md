@@ -7,6 +7,8 @@ Usage of ./certutil:
         Whether this cert should be its own Certificate Authority
   -cert-fn string
         Path to certificate file. Writes certificate by path
+  -cn string
+        Common name
   -der
         Whether this cert should be der encoded (default pem format)
   -duration duration
@@ -17,7 +19,7 @@ Usage of ./certutil:
         Comma-separated hostnames and IPs to generate a certificate for
   -key-fn string
         Path to key file. Writes key by path
-  -organization string
+  -o string
         Organization name
   -parent-cert-fn string
         Path to parent certificate file

@@ -29,7 +29,8 @@ var (
 	ecdsaCurve   = flag.String("ecdsa", "", "ECDSA curve to use to generate a key. Valid values are P224, P256 (recommended), P384, P521")
 	certFile     = flag.String("cert-fn", "", "Path to certificate file. Writes certificate by path")
 	keyFile      = flag.String("key-fn", "", "Path to key file. Writes key by path")
-	organization = flag.String("organization", "", "Organization name")
+	organization = flag.String("o", "", "Organization name")
+	commonName   = flag.String("cn", "", "Common name")
 	parentKey    = flag.String("parent-key-fn", "", "Path to parent key file")
 	parencCert   = flag.String("parent-cert-fn", "", "Path to parent certificate file")
 )
@@ -53,6 +54,12 @@ func main() {
 	}
 	if *host == "" {
 		log.Fatalln("Host flag must be defined")
+	}
+	if *organization == "" {
+		log.Fatalln("Subject name error: organization unit must be not null")
+	}
+	if *commonName == "" {
+		log.Fatalln("Subject name error: common name must be not null")
 	}
 
 	var priv interface{}
@@ -92,7 +99,6 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to generate serial number:", err)
 	}
-
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
 		NotBefore:             notBefore,
@@ -100,11 +106,13 @@ func main() {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-	}
-	if *organization != "" {
-		template.Subject = pkix.Name{
+		Subject: pkix.Name{
 			Organization: []string{*organization},
-		}
+			Country:      []string{"UA"},
+			Locality:     []string{"Kyiv"},
+			SerialNumber: "UA-" + serialNumber.String(),
+			CommonName:   *commonName,
+		},
 	}
 
 	if len(*host) != 0 {
