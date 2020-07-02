@@ -33,6 +33,7 @@ var (
 	commonName   = flag.String("cn", "", "Common name")
 	parentKey    = flag.String("parent-key-fn", "", "Path to parent key file")
 	parencCert   = flag.String("parent-cert-fn", "", "Path to parent certificate file")
+	derToPem     = flag.Bool("der-to-pem", false, "Encode from der to pem")
 )
 
 func publicKey(priv interface{}) interface{} {
@@ -52,7 +53,49 @@ func main() {
 	if *certFile == "" || *keyFile == "" {
 		log.Fatalln("Path to cert and key files must be not null")
 	}
-	if *host == "" {
+	if *derToPem {
+		derCrt, err := ioutil.ReadFile(*certFile)
+		if err != nil {
+			log.Fatalln("Failed to read certificate:", err)
+		}
+		_, err = x509.ParseCertificate(derCrt)
+		if err != nil {
+			log.Fatalln("Failed to parse certificate:", err)
+		}
+		derKey, err := ioutil.ReadFile(*keyFile)
+		if err != nil {
+			log.Fatalln("Failed to read key:", err)
+		}
+		_, err = x509.ParsePKCS8PrivateKey(derKey)
+		if err != nil {
+			log.Fatalln("Failed to parse key:", err)
+		}
+		certOut, err := os.OpenFile(*certFile+".pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			log.Fatalf("Failed to open %s for writing: %v", *certFile, err)
+		}
+		if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derCrt}); err != nil {
+			log.Fatalf("Failed to write data to %s: %v", *certFile, err)
+		}
+		if err := certOut.Close(); err != nil {
+			log.Fatalf("Error closing %s: %v", *certFile, err)
+		}
+		log.Println(fmt.Sprintf("wrote pem encoded %s", *certFile+".pem"))
+		keyOut, err := os.OpenFile(*keyFile+".pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			log.Fatalf("Failed to open %s for writing: %v", *keyFile, err)
+			return
+		}
+		if err := pem.Encode(keyOut, &pem.Block{Type: "PRIVATE KEY", Bytes: derKey}); err != nil {
+			log.Fatalf("Failed to write data to %s: %v", *keyFile, err)
+		}
+		if err := keyOut.Close(); err != nil {
+			log.Fatalf("Error closing %s: %v", *keyFile, err)
+		}
+		log.Println(fmt.Sprintf("wrote pem encoded %s", *keyFile+".pem"))
+		return
+	}
+	if *host == "" && !*isCA {
 		log.Fatalln("Host flag must be defined")
 	}
 	if *organization == "" {
@@ -103,7 +146,7 @@ func main() {
 		SerialNumber:          serialNumber,
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageKeyAgreement | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		Subject: pkix.Name{
@@ -223,7 +266,6 @@ func main() {
 			log.Fatalf("Error closing %s: %v", *certFile, err)
 		}
 		log.Println(fmt.Sprintf("wrote pem encoded %s", *certFile))
-
 		keyOut, err := os.OpenFile(*keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			log.Fatalf("Failed to open %s for writing: %v", *keyFile, err)
