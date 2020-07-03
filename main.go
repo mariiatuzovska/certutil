@@ -23,7 +23,9 @@ var (
 	host         = flag.String("host", "", "Comma-separated hostnames and IPs to generate a certificate for")
 	validFrom    = flag.String("start-date", "", "Creation date formatted as Jan 1 15:04:05 2011")
 	validFor     = flag.Duration("duration", 365*24*time.Hour, "Duration that certificate is valid for")
-	isCA         = flag.Bool("ca", false, "Whether this cert should be its own Certificate Authority")
+	isCA         = flag.Bool("ca", false, "Extended key usage: this cert should be its own Certificate Authority")
+	isServer     = flag.Bool("server", false, "Extended key usage: this cert will be used for server authentication")
+	isClient     = flag.Bool("client", false, "Extended key usage: this cert will be used for client authentication")
 	derCert      = flag.Bool("der", false, "Whether this cert should be der encoded (default pem format)")
 	rsaBits      = flag.Int("rsa", 2048, "Size of RSA key to generate. Ignored if --ecdsa-curve is set")
 	ecdsaCurve   = flag.String("ecdsa", "", "ECDSA curve to use to generate a key. Valid values are P224, P256 (recommended), P384, P521")
@@ -48,6 +50,7 @@ func publicKey(priv interface{}) interface{} {
 }
 
 func main() {
+
 	flag.Parse()
 
 	if *certFile == "" || *keyFile == "" {
@@ -104,6 +107,9 @@ func main() {
 	if *commonName == "" {
 		log.Fatalln("Subject name error: common name must be not null")
 	}
+	if !*isCA && !*isClient && !*isServer {
+		log.Fatalln("Extended key usage must be defined")
+	}
 
 	var priv interface{}
 	var err error
@@ -146,8 +152,6 @@ func main() {
 		SerialNumber:          serialNumber,
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyAgreement | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		Subject: pkix.Name{
 			Organization: []string{*organization},
@@ -158,21 +162,32 @@ func main() {
 		},
 	}
 
-	if len(*host) != 0 {
-		hosts := strings.Split(*host, ",")
-		for _, h := range hosts {
-			if ip := net.ParseIP(h); ip != nil {
-				template.IPAddresses = append(template.IPAddresses, ip)
-			} else {
-				template.DNSNames = append(template.DNSNames, h)
+	if *isCA {
+		log.Printf("Certificate will be created as CA\n")
+		template.IsCA = true
+		template.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
+	} else {
+		template.KeyUsage = x509.KeyUsageKeyAgreement | x509.KeyUsageDigitalSignature
+		if len(*host) != 0 {
+			hosts := strings.Split(*host, ",")
+			for _, h := range hosts {
+				if ip := net.ParseIP(h); ip != nil {
+					template.IPAddresses = append(template.IPAddresses, ip)
+				} else {
+					template.DNSNames = append(template.DNSNames, h)
+				}
 			}
 		}
 	}
 
-	if *isCA {
-		log.Printf("Certificate will be created as CA\n")
-		template.IsCA = true
-		template.KeyUsage |= x509.KeyUsageCertSign
+	if *isServer {
+		log.Printf("Certificate will be created with extended key usage for server authentication\n")
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	}
+
+	if *isClient {
+		log.Printf("Certificate will be created with extended key usage for client authentication\n")
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
 	}
 
 	var derBytes []byte
